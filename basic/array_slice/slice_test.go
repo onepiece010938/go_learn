@@ -23,7 +23,7 @@ func TestSliceInit(t *testing.T) {
 func TestSliceGrowing(t *testing.T) {
 	s := []int{}
 	for i := 0; i < 10; i++ {
-		s = append(s, i) // 複製一份達成append
+		s = append(s, i) // 分配記憶體+複製一份達成append（有消耗）
 		t.Log(s, len(s), cap(s))
 	}
 	//  [0] 1 1
