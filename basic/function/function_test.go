@@ -39,8 +39,32 @@ func slowFun(op int) int {
 	time.Sleep(time.Second * 1)
 	return op
 }
-
 func TestTimeSpent(t *testing.T) {
 	tsSF := timeSpent(slowFun)
 	t.Log(tsSF(1000))
+}
+
+// 可變參數 透過...
+func Sum(ops ...int) int {
+	ret := 0
+	for _, op := range ops {
+		ret += op
+	}
+	return ret
+}
+
+func TestVarParam(t *testing.T) {
+	t.Log(Sum(1, 2, 3, 4))
+	t.Log(Sum(1, 2, 3, 4, 5))
+}
+
+// defer 類似java try finally
+func TestDefer(t *testing.T) {
+	defer Clear()
+	fmt.Println("Start")
+	panic("err") //defer一樣會執行
+	// fmt.Println("不會被執行")
+}
+func Clear() {
+	fmt.Println("Clear resource")
 }
