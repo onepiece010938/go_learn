@@ -167,6 +167,8 @@ def B(){
 普遍認為 goroutine 是Go語言對於協程的實現。 不同的是，Golang 在 runtime、系統調用等多方面對 goroutine 調度進行了封裝和處理，
 一個goroutine就是一個獨立的工作單元，Go的runtime（運行時）會在邏輯處理器上調度這些goroutine來運行，一個邏輯處理器綁定一個操作系統線程，
 當遇到長時間執行或者進行系統調用時，會主動把當前 goroutine 的CPU (P) 轉讓出去，讓其他 goroutine 能被調度並執行，也就是 Golang 從語言層面支持了協程。
+此外，Goroutine會根據程式的執行過程，動態地調整自身的大小。 Golang的並行模型是採用 1978年由 Tony Hoare提出來的 Communicating sequential processes，
+不是透過 Lock資料而是透過 Channel的方式在多個 Goroutine之間進行同步通信與交換。
 Golang 的一大特色就是從語言層面原生支持協程，在函數或者方法前面加 go關鍵字就可創建一個協程。
 
 與線程的比較
@@ -184,19 +186,47 @@ goroutine：只有三個寄存器的值修改 - PC / SP / DX.
 
 func TestGoroutinePROCS(t *testing.T) {
 	runtime.GOMAXPROCS(1) // 設置進程綁定的邏輯處理器
+	//對於邏輯處理器的個數，不是越多越好，要根據電腦的實際物理核數，如果不是多核的，設置再多的邏輯處理器個數也沒用，
+	//如果需要設置的話，一般我們採用如下代碼設置。
+	// runtime.GOMAXPROCS(runtime.NumCPU())
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		for i := 1; i < 100; i++ {
+		for i := 1; i < 5; i++ {
 			fmt.Println("A:", i)
+			time.Sleep(time.Second * 1)
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		for i := 1; i < 100; i++ {
+		for i := 1; i < 5; i++ {
 			fmt.Println("B:", i)
+			time.Sleep(time.Second * 1)
 		}
 	}()
 	wg.Wait()
 }
+
+// 展示主執行緒執行結束後，會將子執行緒release
+func TestGoroutineRelease(t *testing.T) {
+	//     執行子執行序
+	go func() {
+		time.Sleep(100000000)
+		fmt.Println("Goroutine Done!")
+	}()
+	fmt.Println("Done!")
+}
+
+// 以上執行的結果為"Done！"，原因是在未執行完Goroutine的時候就自動的被釋放掉了，導致不會印出Goroutine Done！。
+
+/*
+
+	一般來說使用多執行緒中，最常會遇到會5個問題如下:
+	多執行緒相互溝通
+	等待一執行緒結束後再接續工作
+	多執行緒共用同一個變數
+	不同執行緒產出影響後續邏輯
+	兄弟執行緒間不求同生只求同死
+	根據上述問題，基本上都可以透過channel, context, sync.WaitGroup, Select, sync.Mutex等方式解決，下面詳細解析如何解決:
+*/
