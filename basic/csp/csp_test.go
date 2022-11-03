@@ -68,19 +68,24 @@ func TestAsyncServiceBufferChan(t *testing.T) {
 
 // 經典面試題：兩個線程輪流打印0到100？
 // 建立兩個協程一個負責印奇數，一個印偶數
-func goroutineOdd(wg *sync.WaitGroup, ch *chan struct{}) {
+func goroutineOdd(wg *sync.WaitGroup, ch chan struct{}) {
 	defer wg.Done()
+
 	for i := 0; i <= 100; i++ {
-		<-*ch
+		<-ch
 		if i%2 != 0 {
 			fmt.Println(i)
 		}
 	}
 }
-func goroutineEven(wg *sync.WaitGroup, ch *chan struct{}) {
-	defer wg.Done()
+func goroutineEven(wg *sync.WaitGroup, ch chan struct{}) {
+	defer func() {
+		wg.Done()
+		close(ch)
+	}()
+
 	for i := 0; i <= 100; i++ {
-		*ch <- struct{}{}
+		ch <- struct{}{}
 		if i%2 == 0 {
 			fmt.Println(i)
 		}
@@ -92,8 +97,8 @@ func TestCrossPrint0To100(t *testing.T) {
 	// 這裡有一個技巧：為什麼使用struct 類型作為channel 的通知？
 	// 很多開源代碼都是使用這種方式來作為信號通知機制，主要是因為空struct 在Go 中佔的內存是最少的。
 	wg.Add(2)
-	go goroutineOdd(&wg, &ch)
-	go goroutineEven(&wg, &ch)
+	go goroutineOdd(&wg, ch)
+	go goroutineEven(&wg, ch)
 	wg.Wait()
 }
 

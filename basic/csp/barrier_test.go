@@ -21,6 +21,7 @@ type barrierResp struct {
 }
 
 // 建造請求
+// 宣告成 只寫channel
 func makeRequest(out chan<- barrierResp, url string) {
 	res := barrierResp{}
 
