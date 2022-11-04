@@ -217,3 +217,158 @@ func TestTypeAssertionsSwitch(t *testing.T) {
 		}
 	}
 }
+
+// 3.3 傳值還是傳指針？
+
+type notifier1 interface {
+	notifyPointer()
+}
+type notifier2 interface {
+	notifyValue()
+}
+
+func sendNotificationPointer(n notifier1) {
+	n.notifyPointer()
+}
+
+func sendNotificationValue(n notifier2) {
+	n.notifyValue()
+}
+
+type user struct {
+	name  string
+	email string
+}
+
+func (u *user) notifyPointer() { // 這裡的接收者是指針
+	fmt.Println(u.name, u.email)
+}
+func (u user) notifyValue() { // 這裡的接收者是值
+	fmt.Println(u.name, u.email)
+}
+func TestNotify(t *testing.T) {
+	u := user{"Raymond", "raymond@gmail.com"}
+	// 接收者是指針時
+	// sendNotificationPointer(u)  // 傳遞的是值 會編譯失敗
+	sendNotificationPointer(&u) // 傳遞的是指针，會成功
+
+	// 接收者是值時，無論傳遞值還是指針都會通過
+	sendNotificationValue(u)
+	sendNotificationValue(&u)
+
+}
+
+// 3.4 什麼時候接收者用值or指針？ 先單看Struct結構體指針類型方法
+
+type myStruct struct {
+	Name string
+}
+
+//定義這個結構的改名方法
+func (m myStruct) ChangeName(newName string) {
+	m.Name = newName
+}
+
+func TestChangeName(t *testing.T) {
+	//創建這個結構體變量
+	mystruct := myStruct{
+		Name: "raymond",
+	}
+
+	//調用改名函數
+	mystruct.ChangeName("RAYMOND")
+
+	//不會變
+	fmt.Println(mystruct.Name)
+}
+
+/*這樣的方法不會改掉結構體變量內的字段值。
+就算是結構體方法，如果不使用指針，方法內還是傳遞結構體的值。*/
+
+// 當要改變結構體內的值時，要使用指針定義結構
+func (m *myStruct) ChangeName2(newName string) {
+	m.Name = newName
+}
+func TestChangeName2(t *testing.T) {
+	//創建這個結構體變量
+	mystruct := myStruct{
+		Name: "raymond",
+	}
+
+	//調用改名函數
+	/*
+		***當使用指針類型定義方法後，結構體類型的變量調用方法時，
+		   會自動取得該結構體的指針類型並傳入方法。***
+	*/
+	mystruct.ChangeName2("RAYMOND")
+
+	//變了
+	fmt.Println(mystruct.Name)
+}
+
+// 3.5 再看看指針類型的接口實現
+
+// 定義一個接口
+type myInterfaceI interface {
+	ChangeNameI(string)
+	SayMyNameI()
+}
+
+type myStructI struct {
+	Name string
+}
+
+// 定義接收指針的改名方法
+func (m *myStructI) ChangeNameI(newName string) {
+	m.Name = newName
+}
+
+// 定義接收變量的方法
+func (m myStructI) SayMyNameI() {
+	fmt.Println(m.Name)
+}
+
+// 一個使用接口作為參數的函數
+func SetName(s myInterfaceI, name string) {
+	s.ChangeNameI(name)
+}
+
+func TestChangeNameI(t *testing.T) {
+	// 檢核myStructI有沒有實現myInterfaceI （interface_check_test.go再詳細講）
+	var _ myInterfaceI = (*myStructI)(nil)
+	//創建這個結構體變量
+	mystruct := myStructI{
+		Name: "raymond",
+	}
+	// 調用函數，無法編譯通過
+	// SetName(mystruct, "RAYMOND")
+
+	/*
+		cannot use mystruct (type myStructI) as type myInterfaceI in argument to SetNameI:
+		myStructI does not implement myInterfaceI (ChangeNameI method has pointer receiver)
+	*/
+	// myStructI類型沒有實現接口方法ChangeNameI，
+	// 也就是說func (m *myStructI) ChangeName(newName string) 並不算實現了接口，
+	// 因為它是*myStructI類型實現的，而不是myStructI。
+
+	// 直接用結構體卻是可以調用的
+	mystruct.ChangeNameI("RAYMOND")
+	mystruct.SayMyNameI()
+
+	//在調用SetName時，得用&mystruct 替代mystruct
+	SetName(&mystruct, "RAYMOND!")
+	mystruct.SayMyNameI()
+
+}
+
+/*
+為什麼結構體類型實現的接口該結構體的指針類型也算實現了，而指針類型實現的接口，不算是該結構體實現了接口呢？
+
+**
+   原因是，結構體類型定義的方法可以被該結構體的指針類型調用；
+   而結構體類型調用該指針類型的方法時是被轉換成指針，不是直接調用。
+**
+
+所以，&mystruct直接實現了接口定義的ChangeNameI和SayMyNameI兩個方法，
+而mystruct只能實現了SayMyNameI，mystruct調用ChangeNameI方法其實轉換成指針類型後調用的，不算實現了接口。
+*/
