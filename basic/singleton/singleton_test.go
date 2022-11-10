@@ -3,6 +3,9 @@ package singleton
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -263,4 +266,83 @@ type DAO struct {
 程式一開始就會先連接 db 並檢查是否連線正常，
 接著 DAO 由於需要用 db 所以將 *sql.DB instance 注入到裡面，
 這樣可以保證 DAO 都會是用到同樣的 *sql.DB。
+
+在多數情況下，sync.Once被用於控制變量的初始化，這個變量的讀寫滿足如下三個條件：
+
+	1.當且僅當第一次訪問某個變量時，進行初始化（寫）
+	2.變量初始化過程中，所有讀都被阻塞，直到初始化完成
+	3.變量僅初始化一次，初始化完成後駐留在內存裡。
+*/
+
+/*
+考慮一個簡單的場景，函數ReadConfig 需要讀取環境變量，並轉換為對應的配置。
+環境變量在程序執行前已經確定，執行過程中不會發生改變。
+ReadConfig 可能會被多個協程並發調用，為了提升性能（減少執行時間和內存佔用），使用 sync.Once 是一個比較好的方式。
+*/
+type Config struct {
+	Server string
+	Port   int64
+}
+
+var (
+	Once   sync.Once
+	config *Config
+)
+
+func ReadConfig() *Config {
+	Once.Do(func() {
+		var err error
+		config = &Config{Server: os.Getenv("TT_SERVER_URL")}
+		config.Port, err = strconv.ParseInt(os.Getenv("TT_PORT"), 10, 0)
+		if err != nil {
+			config.Port = 8080 // default port
+		}
+		log.Println("init config")
+	})
+	return config
+}
+
+func TestReadConfig(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		go func() {
+			_ = ReadConfig()
+		}()
+	}
+	//init config僅打印了一次，即sync.Once 中的初始化函數僅執行了一次。
+	time.Sleep(time.Second)
+}
+
+/*
+在這個例子中，聲明了2 個全局變量，once 和config；
+config 是需要在ReadConfig 函數中初始化的(將環境變量轉換為Config 結構體)，ReadConfig 可能會被並發調用。
+如果ReadConfig 每次都構造出一個新的Config 結構體，既浪費內存，又浪費初始化時間。
+如果ReadConfig 中不加鎖，初始化全局變量config 就可能出現並發衝突。
+這種情況下，使用sync.Once 既能夠保證全局變量初始化時是線程安全的，又能節省內存和初始化時間。
+*/
+
+/*題外話：原碼裡面為什麼將done設置為Once的第一個字段？*/
+/*
+type Once struct {
+    // done indicates whether the action has been performed.
+    // It is first in the struct because it is used in the hot path.
+    // The hot path is inlined at every call site.
+    // Placing done first allows more compact instructions on some architectures (amd64/x86),
+    // and fewer instructions (to calculate offset) on other architectures.
+    done uint32
+    m    Mutex
+}
+*/
+/*
+其中解釋了為什麼將done 置為Once 的第一個字段：done 在熱路徑中，done 放在第一個字段，能夠減少CPU 指令，也就是說，這樣做能夠提升性能。
+
+簡單解釋下這句話：
+
+	1.熱路徑(hot path)是程序非常頻繁執行的一系列指令，sync.Once 絕大部分場景都會訪問o.done，在熱路徑上是比較好理解的，
+	如果hot path 編譯後的機器碼指令更少，更直接，必然是能夠提升性能的。
+
+	2.為什麼放在第一個字段就能夠減少指令呢？
+	因為結構體第一個字段的地址和結構體的指針是相同的，如果是第一個字段，直接對結構體的指針解引用即可。
+	如果是其他的字段，除了結構體指針外，還需要計算與第一個值的偏移(calculate offset)。
+	在機器碼中，偏移量是隨指令傳遞的附加值，CPU 需要做一次偏移值與指針的加法運算，才能獲取要訪問的值的地址。
+	因此，訪問第一個字段的機器代碼更緊湊，速度更快。
 */
