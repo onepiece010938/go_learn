@@ -1,6 +1,7 @@
 package reflect
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -470,8 +471,54 @@ func TestInvokeByName(t *testing.T) {
 	} else {
 		t.Log("Tag:format", nameField.Tag.Get("format"))
 	}
+
 	reflect.ValueOf(e).MethodByName("UpdateAge").Call([]reflect.Value{reflect.ValueOf(1)})
 	t.Log("Update Age", e)
+}
+
+// 通用程序: 對Employee跟Customer 改Name跟Age
+func fillBySettings(st interface{}, settings map[string]interface{}) error {
+	if reflect.TypeOf(st).Kind() != reflect.Ptr {
+		// Elem() 獲取指針指向的值
+		if reflect.TypeOf(st).Elem().Kind() != reflect.Struct {
+			return errors.New("The first param type should be a pointer to the struct")
+		}
+	}
+	if settings == nil {
+		return errors.New("settings is nil")
+	}
+
+	var (
+		field reflect.StructField
+		ok    bool
+	)
+	for k, v := range settings {
+		// 檢查有無這個field
+		if field, ok = (reflect.ValueOf(st)).Elem().Type().FieldByName(k); !ok {
+			continue
+		}
+		// 若StructField裡面的type跟 map裡面的type一致 才能寫入
+		if field.Type == reflect.TypeOf(v) {
+			vstr := reflect.ValueOf(st)
+			vstr = vstr.Elem()
+			vstr.FieldByName(k).Set(reflect.ValueOf(v))
+		}
+
+	}
+	return nil
+}
+func TestFillNameAndAge(t *testing.T) {
+	settings := map[string]interface{}{"Name": "Raymond", "Age": 25}
+	e := Employee{}
+	if err := fillBySettings(&e, settings); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(e)
+	c := new(Customer)
+	if err := fillBySettings(c, settings); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(*c)
 }
 
 /*
